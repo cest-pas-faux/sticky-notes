@@ -175,24 +175,29 @@ export function NoteCard({ note, onUpdate, onDelete, onTogglePin, onSetColor, on
           )}
         </div>
 
-        <button
-          onClick={() => { setShowDatePicker((s) => !s); setShowColorPicker(false); }}
-          className="text-xs opacity-50 hover:opacity-100 transition-opacity"
-          title="Set expiration"
-        >🗓</button>
-        {showDatePicker && (
-          <input
-            type="date"
-            className="text-xs bg-white dark:bg-gray-800 border dark:border-gray-700 rounded px-1 py-0.5"
-            value={expiryValue}
-            min={new Date().toISOString().slice(0, 10)}
-            onChange={(e) => {
-              const val = e.target.value;
-              onUpdate(note.id, { expiresAt: val ? new Date(val).getTime() + 86400000 - 1 : undefined });
-              setShowDatePicker(false);
-            }}
-          />
-        )}
+        <div className="relative">
+          <button
+            onClick={() => { setShowDatePicker((s) => !s); setShowColorPicker(false); }}
+            className="text-xs opacity-50 hover:opacity-100 transition-opacity"
+            title="Set expiration"
+          >🗓</button>
+          {showDatePicker && (
+            <div className="absolute bottom-6 left-0 z-30 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-2 border border-gray-200 dark:border-gray-700">
+              <input
+                type="date"
+                autoFocus
+                className="text-xs bg-transparent outline-none dark:text-gray-100"
+                value={expiryValue}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onUpdate(note.id, { expiresAt: val ? new Date(val).getTime() + 86400000 - 1 : undefined });
+                  setShowDatePicker(false);
+                }}
+              />
+            </div>
+          )}
+        </div>
         {note.expiresAt && (
           <button onClick={() => onUpdate(note.id, { expiresAt: undefined })} className="text-xs opacity-40 hover:opacity-80" title="Remove expiration">✕</button>
         )}
