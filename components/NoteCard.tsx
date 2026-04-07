@@ -178,9 +178,13 @@ export function NoteCard({ note, onUpdate, onDelete, onTogglePin, onSetColor, on
         <div className="relative">
           <button
             onClick={() => { setShowDatePicker((s) => !s); setShowColorPicker(false); }}
-            className="text-xs opacity-50 hover:opacity-100 transition-opacity"
+            className="w-4 h-4 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity text-gray-500 dark:text-gray-400"
             title="Set expiration"
-          >🗓</button>
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+              <path fillRule="evenodd" d="M4 1.75a.75.75 0 0 1 1.5 0V3h5V1.75a.75.75 0 0 1 1.5 0V3A2.5 2.5 0 0 1 14.5 5.5v6A2.5 2.5 0 0 1 12 14H4a2.5 2.5 0 0 1-2.5-2.5v-6A2.5 2.5 0 0 1 4 3V1.75ZM3 7.5h10V11.5A1 1 0 0 1 12 12.5H4a1 1 0 0 1-1-1V7.5Zm2 1.5a.75.75 0 0 0 0 1.5h.01a.75.75 0 0 0 0-1.5H5Zm2.75.75a.75.75 0 0 1 .75-.75h.01a.75.75 0 0 1 0 1.5H8.5a.75.75 0 0 1-.75-.75ZM11 9a.75.75 0 0 0 0 1.5h.01a.75.75 0 0 0 0-1.5H11Z" clipRule="evenodd" />
+            </svg>
+          </button>
           {showDatePicker && (
             <div className="absolute bottom-6 left-0 z-30 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-2 border border-gray-200 dark:border-gray-700">
               <input
