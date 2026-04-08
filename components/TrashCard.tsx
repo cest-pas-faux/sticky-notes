@@ -17,9 +17,6 @@ export function TrashCard({ note, onRestore, onHardDelete }: Props) {
         <span className="font-semibold text-sm text-gray-700 dark:text-gray-200 flex-1 truncate">
           {note.title || <em className="text-gray-400">Untitled</em>}
         </span>
-        {note.expiresAt && note.expiresAt < Date.now() && (
-          <span className="text-xs bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-1.5 py-0.5 rounded">Expired</span>
-        )}
       </div>
       {note.body && (
         <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-3">{note.body}</p>

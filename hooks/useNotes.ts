@@ -64,22 +64,10 @@ export function useNotes() {
   const runExpirationCheck = useCallback((currentNotes: Note[], trashSettings: TrashSettings): Note[] => {
     const now = Date.now();
     const cleanupThreshold = trashSettings.autoCleanupDays * 24 * 60 * 60 * 1000;
-
-    return currentNotes
-      .map((note) => {
-        // Move expired active notes to trash
-        if (!note.trashedAt && note.expiresAt && note.expiresAt < now) {
-          return { ...note, trashedAt: now };
-        }
-        return note;
-      })
-      .filter((note) => {
-        // Hard-delete notes that have been in trash beyond cleanup threshold
-        if (note.trashedAt && now - note.trashedAt > cleanupThreshold) {
-          return false;
-        }
-        return true;
-      });
+    return currentNotes.filter((note) => {
+      if (note.trashedAt && now - note.trashedAt > cleanupThreshold) return false;
+      return true;
+    });
   }, []);
 
   const applyExpirationCheck = useCallback(() => {

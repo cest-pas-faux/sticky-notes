@@ -18,25 +18,9 @@ interface Props {
   onRemoveTag: (noteId: string, tagId: string) => void;
 }
 
-function ExpiryBadge({ expiresAt }: { expiresAt?: number }) {
-  if (!expiresAt) return null;
-  const now = Date.now();
-  const diff = expiresAt - now;
-  if (diff < 0)
-    return <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">Expired</span>;
-  if (diff < 24 * 60 * 60 * 1000)
-    return <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Expires soon</span>;
-  return (
-    <span className="text-xs px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 text-gray-500 dark:text-gray-400">
-      {new Date(expiresAt).toLocaleDateString()}
-    </span>
-  );
-}
-
 export function NoteCard({ note, onUpdate, onDelete, onTogglePin, onSetColor, onAddTag, onRemoveTag }: Props) {
   const [editingBody, setEditingBody] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
@@ -59,8 +43,6 @@ export function NoteCard({ note, onUpdate, onDelete, onTogglePin, onSetColor, on
     }
   };
 
-  const expiryValue = note.expiresAt ? new Date(note.expiresAt).toISOString().slice(0, 10) : "";
-
   return (
     <div
       ref={setNodeRef}
@@ -76,7 +58,6 @@ export function NoteCard({ note, onUpdate, onDelete, onTogglePin, onSetColor, on
           : `shadow-sm hover:shadow-md ${colorClasses}`,
       ].join(" ")}
     >
-      {/* Slot highlight shown on the card displaced by the dragged one */}
       {isDragging && (
         <div className="absolute inset-0 rounded-xl border-2 border-dashed border-indigo-400 dark:border-indigo-500 bg-indigo-50/60 dark:bg-indigo-900/20 pointer-events-none" />
       )}
@@ -149,13 +130,11 @@ export function NoteCard({ note, onUpdate, onDelete, onTogglePin, onSetColor, on
         />
       </div>
 
-      {/* Footer: expiry, color, date */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <ExpiryBadge expiresAt={note.expiresAt} />
-
+      {/* Footer: color picker + date */}
+      <div className="flex items-center gap-2">
         <div className="relative">
           <button
-            onClick={() => { setShowColorPicker((s) => !s); setShowDatePicker(false); }}
+            onClick={() => setShowColorPicker((s) => !s)}
             className="w-4 h-4 rounded-full border border-gray-400/50 opacity-60 hover:opacity-100 transition-opacity"
             title="Change color"
           >
@@ -174,37 +153,6 @@ export function NoteCard({ note, onUpdate, onDelete, onTogglePin, onSetColor, on
             </div>
           )}
         </div>
-
-        <div className="relative">
-          <button
-            onClick={() => { setShowDatePicker((s) => !s); setShowColorPicker(false); }}
-            className="w-4 h-4 flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity text-gray-500 dark:text-gray-400"
-            title="Set expiration"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-              <path fillRule="evenodd" d="M4 1.75a.75.75 0 0 1 1.5 0V3h5V1.75a.75.75 0 0 1 1.5 0V3A2.5 2.5 0 0 1 14.5 5.5v6A2.5 2.5 0 0 1 12 14H4a2.5 2.5 0 0 1-2.5-2.5v-6A2.5 2.5 0 0 1 4 3V1.75ZM3 7.5h10V11.5A1 1 0 0 1 12 12.5H4a1 1 0 0 1-1-1V7.5Zm2 1.5a.75.75 0 0 0 0 1.5h.01a.75.75 0 0 0 0-1.5H5Zm2.75.75a.75.75 0 0 1 .75-.75h.01a.75.75 0 0 1 0 1.5H8.5a.75.75 0 0 1-.75-.75ZM11 9a.75.75 0 0 0 0 1.5h.01a.75.75 0 0 0 0-1.5H11Z" clipRule="evenodd" />
-            </svg>
-          </button>
-          {showDatePicker && (
-            <div className="absolute bottom-6 left-0 z-30 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-2 border border-gray-200 dark:border-gray-700">
-              <input
-                type="date"
-                autoFocus
-                className="text-xs bg-transparent outline-none dark:text-gray-100"
-                value={expiryValue}
-                min={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  onUpdate(note.id, { expiresAt: val ? new Date(val).getTime() + 86400000 - 1 : undefined });
-                  setShowDatePicker(false);
-                }}
-              />
-            </div>
-          )}
-        </div>
-        {note.expiresAt && (
-          <button onClick={() => onUpdate(note.id, { expiresAt: undefined })} className="text-xs opacity-40 hover:opacity-80" title="Remove expiration">✕</button>
-        )}
 
         <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
           {new Date(note.updatedAt).toLocaleDateString()}

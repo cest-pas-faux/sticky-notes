@@ -27,7 +27,6 @@ export interface Note {
   pinned: boolean;
   createdAt: number;
   updatedAt: number;
-  expiresAt?: number;
   trashedAt?: number;
   order: number;
 }
