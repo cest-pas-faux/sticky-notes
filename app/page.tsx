@@ -3,17 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   DndContext,
-  rectIntersection,
   closestCenter,
   PointerSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
-  useDroppable,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
-  DroppableContainer,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import { useNotes } from "@/hooks/useNotes";
@@ -26,29 +23,6 @@ import { TrashCard } from "@/components/TrashCard";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import type { View } from "@/types";
 
-// Custom collision detector: archive zone wins if the pointer is inside it,
-// otherwise fall back to closestCenter among sortable grid items.
-function archivePriorityCollision({
-  active,
-  droppableContainers,
-  pointerCoordinates,
-  ...args
-}: Parameters<typeof rectIntersection>[0]) {
-  if (!pointerCoordinates) return closestCenter({ active, droppableContainers, pointerCoordinates, ...args });
-
-  const archiveContainer = droppableContainers.find((c: DroppableContainer) => c.id === "archive-zone");
-  if (archiveContainer?.rect.current) {
-    const r = archiveContainer.rect.current;
-    const { x, y } = pointerCoordinates;
-    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-      return [{ id: "archive-zone" }];
-    }
-  }
-
-  // Filter out the archive zone so closestCenter only sees grid items
-  const gridContainers = droppableContainers.filter((c: DroppableContainer) => c.id !== "archive-zone");
-  return closestCenter({ active, droppableContainers: gridContainers, pointerCoordinates, ...args });
-}
 
 function NotesView() {
   const {
@@ -67,10 +41,7 @@ function NotesView() {
 
   const [dragIds, setDragIds] = useState<string[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [search] = useState(""); // passed via prop in parent but kept local here for simplicity
   const isDndDisabled = sortOrder !== "manual";
-
-  const { setNodeRef: setArchiveRef, isOver: isOverArchive } = useDroppable({ id: "archive-zone" });
 
   const activeNotes = notes.filter((n) => !n.trashedAt && !n.archived);
   const archivedNotes = notes.filter((n) => !n.trashedAt && !!n.archived);
@@ -135,7 +106,7 @@ function NotesView() {
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
       )}
-      collisionDetection={archivePriorityCollision}
+      collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
@@ -157,9 +128,7 @@ function NotesView() {
         {/* Archive panel — right side */}
         <ArchivePanel
           notes={archivedNotes}
-          isOver={isOverArchive}
           draggingFromGrid={draggingFromGrid}
-          setNodeRef={setArchiveRef}
         />
       </div>
     </DndContext>

@@ -25,12 +25,13 @@ function ArchiveItem({ note }: { note: Note }) {
 
 interface Props {
   notes: Note[];
-  isOver: boolean;
   draggingFromGrid: boolean;
-  setNodeRef: (el: HTMLElement | null) => void;
 }
 
-export function ArchivePanel({ notes, isOver, draggingFromGrid, setNodeRef }: Props) {
+export function ArchivePanel({ notes, draggingFromGrid }: Props) {
+  // Must be inside DndContext — so useDroppable lives here, not in the parent
+  const { setNodeRef, isOver } = useDroppable({ id: "archive-zone" });
+
   const highlight = isOver && draggingFromGrid;
 
   return (
@@ -39,9 +40,7 @@ export function ArchivePanel({ notes, isOver, draggingFromGrid, setNodeRef }: Pr
       className={[
         "w-48 shrink-0 flex flex-col border-l transition-colors duration-150",
         "border-gray-200 dark:border-gray-700",
-        highlight
-          ? "bg-indigo-50 dark:bg-indigo-950/40"
-          : "bg-white dark:bg-gray-900",
+        highlight ? "bg-indigo-50 dark:bg-indigo-950/40" : "bg-white dark:bg-gray-900",
       ].join(" ")}
     >
       {/* Header */}
@@ -57,31 +56,29 @@ export function ArchivePanel({ notes, isOver, draggingFromGrid, setNodeRef }: Pr
         )}
       </div>
 
-      {/* Drop zone visual */}
+      {/* Drop zone hint */}
       <div
         className={[
           "mx-2 mb-2 rounded-lg border-2 border-dashed px-2 py-2 text-center text-xs transition-all duration-150",
           highlight
-            ? "border-indigo-400 dark:border-indigo-500 text-indigo-500 dark:text-indigo-400 bg-indigo-100/60 dark:bg-indigo-900/30"
+            ? "border-indigo-400 dark:border-indigo-500 text-indigo-500 dark:text-indigo-400 bg-indigo-100/50 dark:bg-indigo-900/30"
             : draggingFromGrid
             ? "border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
-            : "border-transparent opacity-0 pointer-events-none h-0 py-0 mb-0",
+            : "border-transparent opacity-0 pointer-events-none h-0 overflow-hidden py-0 mb-0",
         ].join(" ")}
       >
-        {highlight ? "Release to archive" : "Drop here to archive"}
+        {highlight ? "Release to archive" : "Drop here"}
       </div>
 
-      {/* Archived note list */}
+      {/* List */}
       <div className="flex-1 overflow-y-auto px-1 pb-4">
-        {notes.length === 0 && !draggingFromGrid ? (
+        {notes.length === 0 ? (
           <p className="text-xs text-center text-gray-300 dark:text-gray-600 mt-6 px-2 leading-relaxed">
             Drag notes here<br />to archive them
           </p>
         ) : (
           <div className="flex flex-col gap-0.5">
-            {notes.map((note) => (
-              <ArchiveItem key={note.id} note={note} />
-            ))}
+            {notes.map((note) => <ArchiveItem key={note.id} note={note} />)}
           </div>
         )}
       </div>
