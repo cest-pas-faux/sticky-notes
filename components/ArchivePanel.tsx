@@ -2,6 +2,7 @@
 
 import { useDroppable, useDraggable } from "@dnd-kit/core";
 import type { Note } from "@/types";
+import { COLOR_SWATCHES } from "@/lib/colors";
 
 function ArchiveItem({ note }: { note: Note }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: note.id });
@@ -18,6 +19,7 @@ function ArchiveItem({ note }: { note: Note }) {
       title="Drag to grid to unarchive"
     >
       <span className="text-gray-300 dark:text-gray-600 text-xs shrink-0">⠿</span>
+      <span className={`w-2 h-2 rounded-full shrink-0 ${COLOR_SWATCHES[note.color]}`} />
       <span className="truncate">{note.title || <em className="text-gray-400">Untitled</em>}</span>
     </div>
   );

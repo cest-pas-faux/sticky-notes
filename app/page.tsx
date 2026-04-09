@@ -8,6 +8,7 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
+  useDroppable,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
@@ -42,6 +43,13 @@ function NotesView() {
   const [dragIds, setDragIds] = useState<string[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const isDndDisabled = sortOrder !== "manual";
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const { setNodeRef: setGridRef } = useDroppable({ id: "grid-zone" });
 
   const activeNotes = notes.filter((n) => !n.trashedAt && !n.archived);
   const archivedNotes = notes.filter((n) => !n.trashedAt && !!n.archived);
@@ -83,9 +91,11 @@ function NotesView() {
     const id = String(active.id);
     const note = notes.find((n) => n.id === id);
     if (note && over) {
-      if (over.id === "archive-zone" && !note.archived) {
+      const overId = String(over.id);
+      if (overId === "archive-zone" && !note.archived) {
         archiveNote(id);
-      } else if (note.archived && over.id !== "archive-zone") {
+      } else if (note.archived && overId !== "archive-zone") {
+        // dropped on grid-zone or any grid card → unarchive
         unarchiveNote(id);
       } else if (!note.archived && dragIds && !isDndDisabled) {
         reorderNotes(dragIds);
@@ -102,10 +112,7 @@ function NotesView() {
 
   return (
     <DndContext
-      sensors={useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-      )}
+      sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
@@ -113,8 +120,8 @@ function NotesView() {
       onDragCancel={handleDragCancel}
     >
       <div className="flex flex-1 min-h-0">
-        {/* Main grid */}
-        <main className="flex-1 px-4 py-6 min-w-0">
+        {/* Main grid — also a drop target so archived items can be dropped anywhere here */}
+        <main ref={setGridRef} className="flex-1 px-4 py-6 min-w-0">
           {orderedNotes.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-32 text-gray-400 dark:text-gray-500 gap-3">
               <span className="text-5xl">📝</span>
