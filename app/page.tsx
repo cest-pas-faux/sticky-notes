@@ -1,11 +1,24 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import { useNotes } from "@/hooks/useNotes";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { sortNotes, filterNotes } from "@/lib/sort";
 import { Toolbar } from "@/components/Toolbar";
 import { NotesGrid } from "@/components/NotesGrid";
+import { ArchivePanel } from "@/components/ArchivePanel";
 import { TrashCard } from "@/components/TrashCard";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import type { View } from "@/types";
@@ -22,6 +35,8 @@ export default function Home() {
     restoreNote,
     hardDeleteNote,
     emptyTrash,
+    archiveNote,
+    unarchiveNote,
     setNoteColor,
     togglePin,
     addTag,
@@ -36,19 +51,37 @@ export default function Home() {
   const { dark, toggle: toggleDark } = useDarkMode();
   const [view, setView] = useState<View>("notes");
   const [search, setSearch] = useState("");
+  const [dragIds, setDragIds] = useState<string[] | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  const activeNotes = notes.filter((n) => !n.trashedAt);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const activeNotes = notes.filter((n) => !n.trashedAt && !n.archived);
+  const archivedNotes = notes.filter((n) => !n.trashedAt && !!n.archived);
   const trashNotes = notes.filter((n) => !!n.trashedAt);
 
-  const displayNotes = filterNotes(sortNotes(activeNotes, sortOrder), search);
+  const isDndDisabled = sortOrder !== "manual" || !!search;
+
+  // The active note being dragged (used to know archive vs grid source)
+  const draggingNote = activeId ? notes.find((n) => n.id === activeId) : null;
+  const draggingFromGrid = !!draggingNote && !draggingNote.archived;
+
+  // Live-reordered list during drag (physical reflow approach)
+  const sortedActive = sortNotes(activeNotes, sortOrder);
+  const orderedNotes = dragIds
+    ? (dragIds.map((id) => sortedActive.find((n) => n.id === id)).filter(Boolean) as typeof sortedActive)
+    : sortedActive;
+  const displayNotes = filterNotes(orderedNotes, search);
 
   const handleNewNote = useCallback(() => {
     setView("notes");
     createNote();
   }, [createNote]);
 
-  // Keyboard shortcut Ctrl+N / Cmd+N
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "n") {
@@ -65,13 +98,65 @@ export default function Home() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const ok = importData(text);
+      const ok = importData(ev.target?.result as string);
       if (!ok) alert("Failed to import: invalid JSON format.");
     };
     reader.readAsText(file);
     e.target.value = "";
   };
+
+  // ── Drag handlers ──────────────────────────────────────────────
+  function handleDragStart({ active }: DragStartEvent) {
+    const id = String(active.id);
+    setActiveId(id);
+    const note = notes.find((n) => n.id === id);
+    // Snapshot grid order so we can do live reflow
+    if (note && !note.archived && !isDndDisabled) {
+      setDragIds(sortedActive.map((n) => n.id));
+    }
+  }
+
+  function handleDragOver({ active, over }: DragOverEvent) {
+    if (!over || isDndDisabled) return;
+    const activeNote = notes.find((n) => n.id === String(active.id));
+    // Only reflow grid when dragging a grid note over another grid note
+    if (!activeNote?.archived && over.id !== "archive-zone") {
+      setDragIds((prev) => {
+        if (!prev) return prev;
+        const oldIdx = prev.indexOf(String(active.id));
+        const newIdx = prev.indexOf(String(over.id));
+        if (oldIdx === -1 || newIdx === -1) return prev;
+        return arrayMove(prev, oldIdx, newIdx);
+      });
+    }
+  }
+
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    const id = String(active.id);
+    const note = notes.find((n) => n.id === id);
+
+    if (note && over) {
+      if (over.id === "archive-zone" && !note.archived) {
+        // Grid → Archive
+        archiveNote(id);
+      } else if (note.archived && over.id !== "archive-zone") {
+        // Archive → Grid
+        unarchiveNote(id);
+      } else if (!note.archived && dragIds && !isDndDisabled) {
+        // Grid → Grid reorder
+        reorderNotes(dragIds);
+      }
+    }
+
+    setActiveId(null);
+    setDragIds(null);
+  }
+
+  function handleDragCancel() {
+    setActiveId(null);
+    setDragIds(null);
+  }
+  // ───────────────────────────────────────────────────────────────
 
   if (!hydrated) {
     return (
@@ -81,8 +166,17 @@ export default function Home() {
     );
   }
 
+  const cardProps = {
+    onUpdate: updateNote,
+    onDelete: deleteNote,
+    onTogglePin: togglePin,
+    onSetColor: setNoteColor,
+    onAddTag: addTag,
+    onRemoveTag: removeTag,
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors flex flex-col">
       <Toolbar
         view={view}
         onViewChange={setView}
@@ -98,13 +192,7 @@ export default function Home() {
         trashCount={trashNotes.length}
       />
 
-      <input
-        ref={importRef}
-        type="file"
-        accept=".json"
-        className="hidden"
-        onChange={handleImportFile}
-      />
+      <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
 
       {view === "trash" && (
         <SettingsPanel
@@ -115,40 +203,45 @@ export default function Home() {
         />
       )}
 
-      <main className="max-w-screen-xl mx-auto px-4 py-6">
-        {view === "notes" ? (
-          displayNotes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-32 text-gray-400 dark:text-gray-500 gap-3">
-              <span className="text-5xl">📝</span>
-              {search ? (
-                <p>No notes match &ldquo;{search}&rdquo;</p>
+      {view === "notes" ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="flex flex-1">
+            <ArchivePanel notes={archivedNotes} draggingFromGrid={draggingFromGrid} />
+
+            <main className="flex-1 px-4 py-6 min-w-0">
+              {displayNotes.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-32 text-gray-400 dark:text-gray-500 gap-3">
+                  <span className="text-5xl">📝</span>
+                  {search ? (
+                    <p>No notes match &ldquo;{search}&rdquo;</p>
+                  ) : (
+                    <>
+                      <p className="text-lg">No notes yet</p>
+                      <button
+                        onClick={handleNewNote}
+                        className="mt-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+                      >
+                        Create your first note
+                      </button>
+                    </>
+                  )}
+                </div>
               ) : (
-                <>
-                  <p className="text-lg">No notes yet</p>
-                  <button
-                    onClick={handleNewNote}
-                    className="mt-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
-                  >
-                    Create your first note
-                  </button>
-                </>
+                <NotesGrid notes={displayNotes} {...cardProps} />
               )}
-            </div>
-          ) : (
-            <NotesGrid
-              notes={displayNotes}
-              onUpdate={updateNote}
-              onDelete={deleteNote}
-              onTogglePin={togglePin}
-              onSetColor={setNoteColor}
-              onAddTag={addTag}
-              onRemoveTag={removeTag}
-              onReorder={reorderNotes}
-              isDndDisabled={sortOrder !== "manual" || !!search}
-            />
-          )
-        ) : (
-          trashNotes.length === 0 ? (
+            </main>
+          </div>
+        </DndContext>
+      ) : (
+        <main className="max-w-screen-xl mx-auto px-4 py-6 w-full">
+          {trashNotes.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-32 text-gray-400 dark:text-gray-500 gap-3">
               <span className="text-5xl">🗑️</span>
               <p>Trash is empty</p>
@@ -159,17 +252,13 @@ export default function Home() {
                 .sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0))
                 .map((note) => (
                   <div key={note.id} className="mb-3">
-                    <TrashCard
-                      note={note}
-                      onRestore={restoreNote}
-                      onHardDelete={hardDeleteNote}
-                    />
+                    <TrashCard note={note} onRestore={restoreNote} onHardDelete={hardDeleteNote} />
                   </div>
                 ))}
             </div>
-          )
-        )}
-      </main>
+          )}
+        </main>
+      )}
     </div>
   );
 }

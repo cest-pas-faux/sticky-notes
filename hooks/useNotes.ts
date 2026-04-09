@@ -112,6 +112,7 @@ export function useNotes() {
       createdAt: now,
       updatedAt: now,
       order: maxOrder + 1,
+      archived: false,
     };
     updateNotes((prev) => [note, ...prev]);
     return note.id;
@@ -161,6 +162,16 @@ export function useNotes() {
   const emptyTrash = useCallback(() => {
     updateNotes((prev) => prev.filter((n) => !n.trashedAt));
   }, [updateNotes]);
+
+  const archiveNote = useCallback(
+    (id: string) => updateNotes((prev) => prev.map((n) => n.id === id ? { ...n, archived: true } : n)),
+    [updateNotes]
+  );
+
+  const unarchiveNote = useCallback(
+    (id: string) => updateNotes((prev) => prev.map((n) => n.id === id ? { ...n, archived: false } : n)),
+    [updateNotes]
+  );
 
   const setNoteColor = useCallback(
     (id: string, color: NoteColor) => updateNote(id, { color }),
@@ -265,6 +276,8 @@ export function useNotes() {
     restoreNote,
     hardDeleteNote,
     emptyTrash,
+    archiveNote,
+    unarchiveNote,
     setNoteColor,
     togglePin,
     addTag,

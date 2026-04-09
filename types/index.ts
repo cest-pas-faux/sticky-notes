@@ -29,6 +29,7 @@ export interface Note {
   updatedAt: number;
   trashedAt?: number;
   order: number;
+  archived?: boolean;
 }
 
 export interface TrashSettings {
