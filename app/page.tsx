@@ -3,14 +3,17 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   DndContext,
+  rectIntersection,
   closestCenter,
   PointerSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
+  useDroppable,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
+  DroppableContainer,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import { useNotes } from "@/hooks/useNotes";
@@ -22,6 +25,146 @@ import { ArchivePanel } from "@/components/ArchivePanel";
 import { TrashCard } from "@/components/TrashCard";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import type { View } from "@/types";
+
+// Custom collision detector: archive zone wins if the pointer is inside it,
+// otherwise fall back to closestCenter among sortable grid items.
+function archivePriorityCollision({
+  active,
+  droppableContainers,
+  pointerCoordinates,
+  ...args
+}: Parameters<typeof rectIntersection>[0]) {
+  if (!pointerCoordinates) return closestCenter({ active, droppableContainers, pointerCoordinates, ...args });
+
+  const archiveContainer = droppableContainers.find((c: DroppableContainer) => c.id === "archive-zone");
+  if (archiveContainer?.rect.current) {
+    const r = archiveContainer.rect.current;
+    const { x, y } = pointerCoordinates;
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+      return [{ id: "archive-zone" }];
+    }
+  }
+
+  // Filter out the archive zone so closestCenter only sees grid items
+  const gridContainers = droppableContainers.filter((c: DroppableContainer) => c.id !== "archive-zone");
+  return closestCenter({ active, droppableContainers: gridContainers, pointerCoordinates, ...args });
+}
+
+function NotesView() {
+  const {
+    notes,
+    sortOrder,
+    archiveNote,
+    unarchiveNote,
+    updateNote,
+    deleteNote,
+    togglePin,
+    setNoteColor,
+    addTag,
+    removeTag,
+    reorderNotes,
+  } = useNotes();
+
+  const [dragIds, setDragIds] = useState<string[] | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [search] = useState(""); // passed via prop in parent but kept local here for simplicity
+  const isDndDisabled = sortOrder !== "manual";
+
+  const { setNodeRef: setArchiveRef, isOver: isOverArchive } = useDroppable({ id: "archive-zone" });
+
+  const activeNotes = notes.filter((n) => !n.trashedAt && !n.archived);
+  const archivedNotes = notes.filter((n) => !n.trashedAt && !!n.archived);
+
+  const draggingNote = activeId ? notes.find((n) => n.id === activeId) : null;
+  const draggingFromGrid = !!draggingNote && !draggingNote.archived;
+
+  const sortedActive = sortNotes(activeNotes, sortOrder);
+  const orderedNotes = dragIds
+    ? (dragIds.map((id) => sortedActive.find((n) => n.id === id)).filter(Boolean) as typeof sortedActive)
+    : sortedActive;
+
+  const cardProps = { onUpdate: updateNote, onDelete: deleteNote, onTogglePin: togglePin, onSetColor: setNoteColor, onAddTag: addTag, onRemoveTag: removeTag };
+
+  function handleDragStart({ active }: DragStartEvent) {
+    const id = String(active.id);
+    setActiveId(id);
+    const note = notes.find((n) => n.id === id);
+    if (note && !note.archived && !isDndDisabled) {
+      setDragIds(sortedActive.map((n) => n.id));
+    }
+  }
+
+  function handleDragOver({ active, over }: DragOverEvent) {
+    if (!over || isDndDisabled || over.id === "archive-zone") return;
+    const note = notes.find((n) => n.id === String(active.id));
+    if (!note?.archived) {
+      setDragIds((prev) => {
+        if (!prev) return prev;
+        const oldIdx = prev.indexOf(String(active.id));
+        const newIdx = prev.indexOf(String(over.id));
+        if (oldIdx === -1 || newIdx === -1) return prev;
+        return arrayMove(prev, oldIdx, newIdx);
+      });
+    }
+  }
+
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    const id = String(active.id);
+    const note = notes.find((n) => n.id === id);
+    if (note && over) {
+      if (over.id === "archive-zone" && !note.archived) {
+        archiveNote(id);
+      } else if (note.archived && over.id !== "archive-zone") {
+        unarchiveNote(id);
+      } else if (!note.archived && dragIds && !isDndDisabled) {
+        reorderNotes(dragIds);
+      }
+    }
+    setActiveId(null);
+    setDragIds(null);
+  }
+
+  function handleDragCancel() {
+    setActiveId(null);
+    setDragIds(null);
+  }
+
+  return (
+    <DndContext
+      sensors={useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+      )}
+      collisionDetection={archivePriorityCollision}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div className="flex flex-1 min-h-0">
+        {/* Main grid */}
+        <main className="flex-1 px-4 py-6 min-w-0">
+          {orderedNotes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-32 text-gray-400 dark:text-gray-500 gap-3">
+              <span className="text-5xl">📝</span>
+              <p className="text-lg">No notes yet</p>
+            </div>
+          ) : (
+            <NotesGrid notes={orderedNotes} {...cardProps} />
+          )}
+        </main>
+
+        {/* Archive panel — right side */}
+        <ArchivePanel
+          notes={archivedNotes}
+          isOver={isOverArchive}
+          draggingFromGrid={draggingFromGrid}
+          setNodeRef={setArchiveRef}
+        />
+      </div>
+    </DndContext>
+  );
+}
 
 export default function Home() {
   const {
@@ -35,8 +178,6 @@ export default function Home() {
     restoreNote,
     hardDeleteNote,
     emptyTrash,
-    archiveNote,
-    unarchiveNote,
     setNoteColor,
     togglePin,
     addTag,
@@ -51,31 +192,11 @@ export default function Home() {
   const { dark, toggle: toggleDark } = useDarkMode();
   const [view, setView] = useState<View>("notes");
   const [search, setSearch] = useState("");
-  const [dragIds, setDragIds] = useState<string[] | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
   const activeNotes = notes.filter((n) => !n.trashedAt && !n.archived);
-  const archivedNotes = notes.filter((n) => !n.trashedAt && !!n.archived);
   const trashNotes = notes.filter((n) => !!n.trashedAt);
-
-  const isDndDisabled = sortOrder !== "manual" || !!search;
-
-  // The active note being dragged (used to know archive vs grid source)
-  const draggingNote = activeId ? notes.find((n) => n.id === activeId) : null;
-  const draggingFromGrid = !!draggingNote && !draggingNote.archived;
-
-  // Live-reordered list during drag (physical reflow approach)
-  const sortedActive = sortNotes(activeNotes, sortOrder);
-  const orderedNotes = dragIds
-    ? (dragIds.map((id) => sortedActive.find((n) => n.id === id)).filter(Boolean) as typeof sortedActive)
-    : sortedActive;
-  const displayNotes = filterNotes(orderedNotes, search);
+  const displayNotes = filterNotes(sortNotes(activeNotes, sortOrder), search);
 
   const handleNewNote = useCallback(() => {
     setView("notes");
@@ -105,59 +226,6 @@ export default function Home() {
     e.target.value = "";
   };
 
-  // ── Drag handlers ──────────────────────────────────────────────
-  function handleDragStart({ active }: DragStartEvent) {
-    const id = String(active.id);
-    setActiveId(id);
-    const note = notes.find((n) => n.id === id);
-    // Snapshot grid order so we can do live reflow
-    if (note && !note.archived && !isDndDisabled) {
-      setDragIds(sortedActive.map((n) => n.id));
-    }
-  }
-
-  function handleDragOver({ active, over }: DragOverEvent) {
-    if (!over || isDndDisabled) return;
-    const activeNote = notes.find((n) => n.id === String(active.id));
-    // Only reflow grid when dragging a grid note over another grid note
-    if (!activeNote?.archived && over.id !== "archive-zone") {
-      setDragIds((prev) => {
-        if (!prev) return prev;
-        const oldIdx = prev.indexOf(String(active.id));
-        const newIdx = prev.indexOf(String(over.id));
-        if (oldIdx === -1 || newIdx === -1) return prev;
-        return arrayMove(prev, oldIdx, newIdx);
-      });
-    }
-  }
-
-  function handleDragEnd({ active, over }: DragEndEvent) {
-    const id = String(active.id);
-    const note = notes.find((n) => n.id === id);
-
-    if (note && over) {
-      if (over.id === "archive-zone" && !note.archived) {
-        // Grid → Archive
-        archiveNote(id);
-      } else if (note.archived && over.id !== "archive-zone") {
-        // Archive → Grid
-        unarchiveNote(id);
-      } else if (!note.archived && dragIds && !isDndDisabled) {
-        // Grid → Grid reorder
-        reorderNotes(dragIds);
-      }
-    }
-
-    setActiveId(null);
-    setDragIds(null);
-  }
-
-  function handleDragCancel() {
-    setActiveId(null);
-    setDragIds(null);
-  }
-  // ───────────────────────────────────────────────────────────────
-
   if (!hydrated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-900">
@@ -165,15 +233,6 @@ export default function Home() {
       </div>
     );
   }
-
-  const cardProps = {
-    onUpdate: updateNote,
-    onDelete: deleteNote,
-    onTogglePin: togglePin,
-    onSetColor: setNoteColor,
-    onAddTag: addTag,
-    onRemoveTag: removeTag,
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors flex flex-col">
@@ -204,41 +263,7 @@ export default function Home() {
       )}
 
       {view === "notes" ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          <div className="flex flex-1">
-            <ArchivePanel notes={archivedNotes} draggingFromGrid={draggingFromGrid} />
-
-            <main className="flex-1 px-4 py-6 min-w-0">
-              {displayNotes.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-32 text-gray-400 dark:text-gray-500 gap-3">
-                  <span className="text-5xl">📝</span>
-                  {search ? (
-                    <p>No notes match &ldquo;{search}&rdquo;</p>
-                  ) : (
-                    <>
-                      <p className="text-lg">No notes yet</p>
-                      <button
-                        onClick={handleNewNote}
-                        className="mt-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm transition-colors"
-                      >
-                        Create your first note
-                      </button>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <NotesGrid notes={displayNotes} {...cardProps} />
-              )}
-            </main>
-          </div>
-        </DndContext>
+        <NotesView />
       ) : (
         <main className="max-w-screen-xl mx-auto px-4 py-6 w-full">
           {trashNotes.length === 0 ? (
