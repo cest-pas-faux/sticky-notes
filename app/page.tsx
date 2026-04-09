@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
   PointerSensor,
   KeyboardSensor,
   useSensor,
@@ -113,7 +114,7 @@ function NotesView() {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={(args) => pointerWithin(args).length ? pointerWithin(args) : closestCenter(args)}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
